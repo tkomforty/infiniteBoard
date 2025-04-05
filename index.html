@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Simple Post-it Canvas</title>
+  <title>Post-it Canvas</title>
   
   <style>
     body, html {
@@ -18,7 +18,7 @@
     #app {
       width: 100%;
       height: 100vh;
-      background-color: #f0f0f0;
+      background-color: #f8f9fa;
       position: relative;
       overflow: hidden;
     }
@@ -46,6 +46,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: background-color 0.2s;
     }
     
     .btn:hover {
@@ -66,6 +67,7 @@
     .note-header {
       display: flex;
       justify-content: space-between;
+      align-items: center;
       padding: 5px;
       border-bottom: 1px solid rgba(0,0,0,0.1);
       cursor: move;
@@ -102,6 +104,7 @@
       font-size: 14px;
       padding: 2px 5px;
       border-radius: 3px;
+      transition: background-color 0.2s;
     }
     
     .note-btn:hover {
@@ -112,6 +115,8 @@
       padding: 0 10px;
       display: flex;
       align-items: center;
+      font-size: 14px;
+      color: #666;
     }
     
     svg.connections {
@@ -147,7 +152,66 @@
       dragStart: { x: 0, y: 0 },
       selectedNote: null,
       isConnecting: false,
-      connectionStart: null
+      connectionStart: null,
+      colorPalettes: {
+        pastel: [
+          '#FFD6A5', // Peach
+          '#CAFFBF', // Mint
+          '#9BF6FF', // Sky
+          '#BDB2FF', // Lavender
+          '#FFC6FF', // Pink
+          '#FDFFB6'  // Yellow
+        ],
+        vibrant: [
+          '#FF6B6B', // Red
+          '#4ECDC4', // Teal
+          '#FFD166', // Yellow
+          '#118AB2', // Blue
+          '#06D6A0', // Green
+          '#FF9F1C'  // Orange
+        ],
+        muted: [
+          '#E9C46A', // Yellow
+          '#F4A261', // Orange
+          '#E76F51', // Red
+          '#2A9D8F', // Teal
+          '#264653', // Dark Blue
+          '#457B9D'  // Blue
+        ],
+        neon: [
+          '#FF00FF', // Magenta
+          '#00FFFF', // Cyan
+          '#FF0000', // Red
+          '#00FF00', // Green
+          '#0000FF', // Blue
+          '#FFFF00'  // Yellow
+        ],
+        earth: [
+          '#CB997E', // Light Brown
+          '#DDBEA9', // Tan
+          '#A5A58D', // Sage
+          '#B7B7A4', // Light Sage
+          '#6B705C', // Olive
+          '#EDDCD2'  // Cream
+        ],
+        sunset: [
+          '#F94144', // Red
+          '#F3722C', // Orange
+          '#F8961E', // Amber
+          '#F9C74F', // Yellow
+          '#90BE6D', // Green
+          '#43AA8B'  // Teal
+        ],
+        ocean: [
+          '#03045E', // Navy
+          '#023E8A', // Dark Blue
+          '#0077B6', // Blue
+          '#0096C7', // Light Blue
+          '#00B4D8', // Sky Blue
+          '#90E0EF'  // Light Sky Blue
+        ]
+      },
+      currentPalette: 'pastel'
     };
     
     // Constants
@@ -165,11 +229,22 @@
     // Generate unique ID
     const generateId = () => `note-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     
-    // Get random pastel color
-    const getRandomColor = () => {
-      const hue = Math.floor(Math.random() * 360);
-      return `hsl(${hue}, 70%, 85%)`;
-    };
+    // Get a random color from our palette
+    function getRandomColor() {
+      const palette = state.colorPalettes[state.currentPalette];
+      return palette[Math.floor(Math.random() * palette.length)];
+    }
+    
+    // Change color palette - cycles through available palettes
+    function changeColorPalette() {
+      const palettes = Object.keys(state.colorPalettes);
+      const currentIndex = palettes.indexOf(state.currentPalette);
+      const nextIndex = (currentIndex + 1) % palettes.length;
+      state.currentPalette = palettes[nextIndex];
+      
+      // Show which palette is active
+      console.log(`Color palette changed to: ${state.currentPalette}`);
+    }
     
     // Create a new note
     const addNote = () => {
@@ -266,17 +341,42 @@
       tools.appendChild(deleteButton);
       header.appendChild(tools);
       
+      // Color indicator - shows a small colored circle with the note's color
+      const colorIndicator = document.createElement('div');
+      colorIndicator.style.width = `${10 * state.zoom}px`;
+      colorIndicator.style.height = `${10 * state.zoom}px`;
+      colorIndicator.style.borderRadius = '50%';
+      colorIndicator.style.backgroundColor = note.color;
+      colorIndicator.style.border = '1px solid rgba(0,0,0,0.1)';
+      colorIndicator.style.marginRight = `${5 * state.zoom}px`;
+      
+      // Double-click on indicator changes note color
+      colorIndicator.addEventListener('dblclick', function(e) {
+        e.stopPropagation();
+        const newColor = getRandomColor();
+        note.color = newColor;
+        noteElement.style.backgroundColor = newColor;
+        colorIndicator.style.backgroundColor = newColor;
+        
+        // Update text color for readability
+        updateTextColor(note, noteContent);
+      });
+      
       // Note content
-      const content = document.createElement('div');
-      content.className = 'note-content';
-      content.style.padding = `${10 * state.zoom}px`;
-      content.style.fontSize = `${14 * state.zoom}px`;
+      const noteContent = document.createElement('div');
+      noteContent.className = 'note-content';
+      noteContent.style.padding = `${10 * state.zoom}px`;
+      noteContent.style.fontSize = `${14 * state.zoom}px`;
+      
+      // Set appropriate text color based on background color brightness
+      updateTextColor(note, noteContent);
       
       if (note.isEditing) {
         const textarea = document.createElement('textarea');
         textarea.value = note.text;
         textarea.style.fontSize = `${14 * state.zoom}px`;
         textarea.style.minHeight = `${80 * state.zoom}px`;
+        textarea.style.color = noteContent.style.color;
         
         textarea.addEventListener('mousedown', function(e) {
           e.stopPropagation();
@@ -290,20 +390,20 @@
           toggleEditing(note.id, false);
         });
         
-        content.appendChild(textarea);
+        noteContent.appendChild(textarea);
         
         // Focus the textarea after rendering
         setTimeout(() => {
           textarea.focus();
         }, 0);
       } else {
-        content.textContent = note.text;
+        noteContent.textContent = note.text;
         
-        content.addEventListener('mousedown', function(e) {
+        noteContent.addEventListener('mousedown', function(e) {
           e.stopPropagation();
         });
         
-        content.addEventListener('click', function(e) {
+        noteContent.addEventListener('click', function(e) {
           e.stopPropagation();
           selectNote(note.id);
           toggleEditing(note.id, true);
@@ -311,7 +411,7 @@
       }
       
       noteElement.appendChild(header);
-      noteElement.appendChild(content);
+      noteElement.appendChild(noteContent);
       
       // Make header draggable
       let startX, startY;
@@ -342,6 +442,41 @@
       
       app.appendChild(noteElement);
     };
+    
+    // Update text color based on background color brightness
+    function updateTextColor(note, element) {
+      const hexColor = note.color.toLowerCase();
+      let r, g, b;
+      
+      // Handle both #RRGGBB and rgb(r,g,b) formats
+      if (hexColor.startsWith('#')) {
+        const hex = hexColor.substring(1);
+        r = parseInt(hex.substr(0, 2), 16);
+        g = parseInt(hex.substr(2, 2), 16);
+        b = parseInt(hex.substr(4, 2), 16);
+      } else if (hexColor.startsWith('rgb')) {
+        const rgbMatch = hexColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/i);
+        if (rgbMatch) {
+          r = parseInt(rgbMatch[1]);
+          g = parseInt(rgbMatch[2]);
+          b = parseInt(rgbMatch[3]);
+        } else {
+          // Default to black text if parsing fails
+          element.style.color = '#000000';
+          return;
+        }
+      } else {
+        // Default to black text if parsing fails
+        element.style.color = '#000000';
+        return;
+      }
+      
+      // Calculate perceived brightness (ITU-R BT.709)
+      const brightness = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      
+      // Set text color based on brightness
+      element.style.color = brightness > 0.6 ? '#000000' : '#FFFFFF';
+    }
     
     // Render all notes
     const renderAllNotes = () => {
@@ -417,7 +552,17 @@
     // Select a note
     const selectNote = (id) => {
       state.selectedNote = id;
-      renderAllNotes();
+      
+      // Update z-index for selected note
+      document.querySelectorAll('.note').forEach(noteEl => {
+        if (noteEl.id === id) {
+          noteEl.style.zIndex = '2';
+          noteEl.style.boxShadow = `${2 * state.zoom}px ${4 * state.zoom}px ${12 * state.zoom}px rgba(0,0,0,0.3)`;
+        } else {
+          noteEl.style.zIndex = '1';
+          noteEl.style.boxShadow = `${1 * state.zoom}px ${2 * state.zoom}px ${10 * state.zoom}px rgba(0,0,0,0.2)`;
+        }
+      });
     };
     
     // Move a note
@@ -476,7 +621,16 @@
     const startConnection = (id) => {
       state.isConnecting = true;
       state.connectionStart = id;
-      renderAllNotes();
+      
+      document.querySelectorAll('.note').forEach(noteEl => {
+        const noteId = noteEl.id;
+        const linkBtn = noteEl.querySelector('.note-btn');
+        
+        if (linkBtn && noteId === id) {
+          linkBtn.textContent = '✂️';
+          linkBtn.title = 'Cancel Connection';
+        }
+      });
       
       // Add connecting message
       const existingMessage = document.getElementById('connecting-message');
@@ -516,13 +670,22 @@
       state.isConnecting = false;
       state.connectionStart = null;
       
+      // Reset all link buttons
+      document.querySelectorAll('.note').forEach(noteEl => {
+        const linkBtn = noteEl.querySelector('.note-btn');
+        if (linkBtn) {
+          linkBtn.textContent = '🔗';
+          linkBtn.title = 'Start Connection';
+        }
+      });
+      
       // Remove connecting message
       const message = document.getElementById('connecting-message');
       if (message) {
         message.remove();
       }
       
-      renderAllNotes();
+      renderConnections();
     };
     
     // Canvas drag
@@ -595,35 +758,70 @@
       zoomInfo.textContent = `${Math.round(state.zoom * 100)}%`;
     };
     
-    // Setup event listeners
-    addButton.addEventListener('click', addNote);
-    zoomInButton.addEventListener('click', zoomIn);
-    zoomOutButton.addEventListener('click', zoomOut);
+    // Create a color palette toggle button
+    function addColorPaletteToggle() {
+      const paletteButton = document.createElement('button');
+      paletteButton.id = 'palette-button';
+      paletteButton.className = 'btn';
+      paletteButton.textContent = '🎨';
+      paletteButton.title = 'Change Color Palette';
+      
+      paletteButton.addEventListener('click', function() {
+        changeColorPalette();
+        // Notify the user that the palette has changed
+        alert(`Color palette changed to: ${state.currentPalette}`);
+      });
+      
+      document.querySelector('.toolbar').appendChild(paletteButton);
+    }
     
-    app.addEventListener('mousedown', startDrag);
-    app.addEventListener('mousemove', doDrag);
-    app.addEventListener('mouseup', endDrag);
-    app.addEventListener('mouseleave', endDrag);
-    app.addEventListener('wheel', handleWheel, { passive: false });
-    
-    // Handle escape key for canceling connections
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && state.isConnecting) {
-        state.isConnecting = false;
-        state.connectionStart = null;
-        
-        // Remove connecting message
-        const message = document.getElementById('connecting-message');
-        if (message) {
-          message.remove();
+    // Initialize the app
+    function initApp() {
+      // Add color palette toggle button
+      addColorPaletteToggle();
+      
+      // Setup event listeners
+      addButton.addEventListener('click', addNote);
+      zoomInButton.addEventListener('click', zoomIn);
+      zoomOutButton.addEventListener('click', zoomOut);
+      
+      app.addEventListener('mousedown', startDrag);
+      app.addEventListener('mousemove', doDrag);
+      app.addEventListener('mouseup', endDrag);
+      app.addEventListener('mouseleave', endDrag);
+      app.addEventListener('wheel', handleWheel, { passive: false });
+      
+      // Handle escape key for canceling connections
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && state.isConnecting) {
+          state.isConnecting = false;
+          state.connectionStart = null;
+          
+          // Reset all link buttons
+          document.querySelectorAll('.note').forEach(noteEl => {
+            const linkBtn = noteEl.querySelector('.note-btn');
+            if (linkBtn) {
+              linkBtn.textContent = '🔗';
+              linkBtn.title = 'Start Connection';
+            }
+          });
+          
+          // Remove connecting message
+          const message = document.getElementById('connecting-message');
+          if (message) {
+            message.remove();
+          }
+          
+          renderConnections();
         }
-        
-        renderAllNotes();
-      }
-    });
+      });
+      
+      // Add a default note to start with
+      addNote();
+    }
     
-    // Add a default note to start with
-    addNote();
+    // Start the app
+    initApp();
   </script>
 </body>
 </html>
