@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple Post-it Canvas</title>
+  
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100%;
+      width: 100%;
+      font-family: Arial, sans-serif;
+    }
+    
+    #app {
+      width: 100%;
+      height: 100vh;
+      background-color: #f0f0f0;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .toolbar {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background-color: white;
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      z-index: 1000;
+      display: flex;
+      gap: 10px;
+    }
+    
+    .btn {
+      border: none;
+      background-color: #f8f8f8;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .btn:hover {
+      background-color: #e8e8e8;
+    }
+    
+    .note {
+      position: absolute;
+      background-color: #fef3b0;
+      border-radius: 5px;
+      box-shadow: 2px 2px 10px rgba(0,0,0,0.2);
+      transform: translate(-50%, -50%);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .note-header {
+      display: flex;
+      justify-content: space-between;
+      padding: 5px;
+      border-bottom: 1px solid rgba(0,0,0,0.1);
+      cursor: move;
+    }
+    
+    .note-content {
+      padding: 10px;
+      flex-grow: 1;
+    }
+    
+    textarea {
+      width: 100%;
+      min-height: 80px;
+      border: none;
+      background: transparent;
+      resize: none;
+      font-family: inherit;
+      font-size: inherit;
+    }
+    
+    textarea:focus {
+      outline: none;
+    }
+    
+    .note-tools {
+      display: flex;
+      gap: 5px;
+    }
+    
+    .note-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 2px 5px;
+      border-radius: 3px;
+    }
+    
+    .note-btn:hover {
+      background-color: rgba(0,0,0,0.1);
+    }
+    
+    .zoom-info {
+      padding: 0 10px;
+      display: flex;
+      align-items: center;
+    }
+    
+    svg.connections {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="toolbar">
+      <button id="add-note" class="btn">➕ Add Note</button>
+      <button id="zoom-in" class="btn">🔍+</button>
+      <button id="zoom-out" class="btn">🔍−</button>
+      <div class="zoom-info">100%</div>
+    </div>
+    
+    <svg class="connections"></svg>
+  </div>
+  
+  <script>
+    // Main application state
+    const state = {
+      notes: [],
+      connections: [],
+      canvasPosition: { x: 0, y: 0 },
+      zoom: 1,
+      isDragging: false,
+      dragStart: { x: 0, y: 0 },
+      selectedNote: null,
+      isConnecting: false,
+      connectionStart: null
+    };
+    
+    // Constants
+    const NOTE_WIDTH = 200;
+    const NOTE_HEIGHT = 150;
+    
+    // DOM elements
+    const app = document.getElementById('app');
+    const addButton = document.getElementById('add-note');
+    const zoomInButton = document.getElementById('zoom-in');
+    const zoomOutButton = document.getElementById('zoom-out');
+    const zoomInfo = document.querySelector('.zoom-info');
+    const connectionsLayer = document.querySelector('.connections');
+    
+    // Generate unique ID
+    const generateId = () => `note-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    
+    // Get random pastel color
+    const getRandomColor = () => {
+      const hue = Math.floor(Math.random() * 360);
+      return `hsl(${hue}, 70%, 85%)`;
+    };
+    
+    // Create a new note
+    const addNote = () => {
+      const id = generateId();
+      const note = {
+        id,
+        text: 'New note...',
+        position: {
+          x: -state.canvasPosition.x / state.zoom + window.innerWidth / (2 * state.zoom),
+          y: -state.canvasPosition.y / state.zoom + window.innerHeight / (2 * state.zoom)
+        },
+        color: getRandomColor(),
+        isEditing: true
+      };
+      
+      state.notes.push(note);
+      state.selectedNote = id;
+      
+      renderNote(note);
+    };
+    
+    // Render a single note
+    const renderNote = (note) => {
+      // Remove existing note if it exists
+      const existingNote = document.getElementById(note.id);
+      if (existingNote) {
+        existingNote.remove();
+      }
+      
+      const noteElement = document.createElement('div');
+      noteElement.id = note.id;
+      noteElement.className = 'note';
+      
+      // Position and size the note with proper scaling
+      noteElement.style.left = `${note.position.x * state.zoom + state.canvasPosition.x}px`;
+      noteElement.style.top = `${note.position.y * state.zoom + state.canvasPosition.y}px`;
+      noteElement.style.width = `${NOTE_WIDTH * state.zoom}px`;
+      noteElement.style.height = `${NOTE_HEIGHT * state.zoom}px`;
+      noteElement.style.padding = `${5 * state.zoom}px`;
+      noteElement.style.borderRadius = `${5 * state.zoom}px`;
+      noteElement.style.boxShadow = `${1 * state.zoom}px ${2 * state.zoom}px ${10 * state.zoom}px rgba(0,0,0,0.2)`;
+      noteElement.style.backgroundColor = note.color;
+      noteElement.style.zIndex = state.selectedNote === note.id ? '2' : '1';
+      
+      // Note header
+      const header = document.createElement('div');
+      header.className = 'note-header';
+      header.style.padding = `${5 * state.zoom}px`;
+      
+      // Note tools
+      const tools = document.createElement('div');
+      tools.className = 'note-tools';
+      
+      // Link button
+      const linkButton = document.createElement('button');
+      linkButton.className = 'note-btn';
+      linkButton.style.fontSize = `${14 * state.zoom}px`;
+      linkButton.style.padding = `${2 * state.zoom}px ${5 * state.zoom}px`;
+      linkButton.textContent = state.isConnecting && state.connectionStart === note.id ? '✂️' : '🔗';
+      linkButton.title = state.isConnecting ? 'Complete Connection' : 'Start Connection';
+      
+      // Delete button
+      const deleteButton = document.createElement('button');
+      deleteButton.className = 'note-btn';
+      deleteButton.style.fontSize = `${14 * state.zoom}px`;
+      deleteButton.style.padding = `${2 * state.zoom}px ${5 * state.zoom}px`;
+      deleteButton.textContent = '🗑️';
+      deleteButton.title = 'Delete Note';
+      
+      // Add button event listeners
+      linkButton.addEventListener('mousedown', function(e) {
+        e.stopPropagation();
+      });
+      
+      linkButton.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (state.isConnecting) {
+          completeConnection(note.id);
+        } else {
+          startConnection(note.id);
+        }
+      });
+      
+      deleteButton.addEventListener('mousedown', function(e) {
+        e.stopPropagation();
+      });
+      
+      deleteButton.addEventListener('click', function(e) {
+        e.stopPropagation();
+        deleteNote(note.id);
+      });
+      
+      tools.appendChild(linkButton);
+      tools.appendChild(deleteButton);
+      header.appendChild(tools);
+      
+      // Note content
+      const content = document.createElement('div');
+      content.className = 'note-content';
+      content.style.padding = `${10 * state.zoom}px`;
+      content.style.fontSize = `${14 * state.zoom}px`;
+      
+      if (note.isEditing) {
+        const textarea = document.createElement('textarea');
+        textarea.value = note.text;
+        textarea.style.fontSize = `${14 * state.zoom}px`;
+        textarea.style.minHeight = `${80 * state.zoom}px`;
+        
+        textarea.addEventListener('mousedown', function(e) {
+          e.stopPropagation();
+        });
+        
+        textarea.addEventListener('input', function(e) {
+          updateNoteText(note.id, e.target.value);
+        });
+        
+        textarea.addEventListener('blur', function() {
+          toggleEditing(note.id, false);
+        });
+        
+        content.appendChild(textarea);
+        
+        // Focus the textarea after rendering
+        setTimeout(() => {
+          textarea.focus();
+        }, 0);
+      } else {
+        content.textContent = note.text;
+        
+        content.addEventListener('mousedown', function(e) {
+          e.stopPropagation();
+        });
+        
+        content.addEventListener('click', function(e) {
+          e.stopPropagation();
+          selectNote(note.id);
+          toggleEditing(note.id, true);
+        });
+      }
+      
+      noteElement.appendChild(header);
+      noteElement.appendChild(content);
+      
+      // Make header draggable
+      let startX, startY;
+      
+      header.addEventListener('mousedown', function(e) {
+        e.stopPropagation();
+        selectNote(note.id);
+        
+        startX = e.clientX;
+        startY = e.clientY;
+        
+        const moveHandler = function(e) {
+          const dx = e.clientX - startX;
+          const dy = e.clientY - startY;
+          moveNote(note.id, dx, dy);
+          startX = e.clientX;
+          startY = e.clientY;
+        };
+        
+        const upHandler = function() {
+          document.removeEventListener('mousemove', moveHandler);
+          document.removeEventListener('mouseup', upHandler);
+        };
+        
+        document.addEventListener('mousemove', moveHandler);
+        document.addEventListener('mouseup', upHandler);
+      });
+      
+      app.appendChild(noteElement);
+    };
+    
+    // Render all notes
+    const renderAllNotes = () => {
+      // Clear existing notes from DOM
+      document.querySelectorAll('.note').forEach(note => {
+        try {
+          note.remove();
+        } catch (e) {
+          // Ignore errors if note was already removed
+        }
+      });
+      
+      // Render each note
+      state.notes.forEach(note => {
+        renderNote(note);
+      });
+      
+      // Render connections
+      renderConnections();
+    };
+    
+    // Render connections
+    const renderConnections = () => {
+      // Clear existing connections
+      connectionsLayer.innerHTML = '';
+      
+      // Render each connection
+      state.connections.forEach(conn => {
+        const startNote = state.notes.find(note => note.id === conn.start);
+        const endNote = state.notes.find(note => note.id === conn.end);
+        
+        if (!startNote || !endNote) return;
+        
+        const startX = startNote.position.x * state.zoom + state.canvasPosition.x;
+        const startY = startNote.position.y * state.zoom + state.canvasPosition.y;
+        const endX = endNote.position.x * state.zoom + state.canvasPosition.x;
+        const endY = endNote.position.y * state.zoom + state.canvasPosition.y;
+        
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', startX);
+        line.setAttribute('y1', startY);
+        line.setAttribute('x2', endX);
+        line.setAttribute('y2', endY);
+        line.setAttribute('stroke', '#666');
+        line.setAttribute('stroke-width', Math.max(1, 2 * state.zoom));
+        line.setAttribute('stroke-dasharray', '5,5');
+        
+        connectionsLayer.appendChild(line);
+      });
+      
+      // Render temporary connection line if connecting
+      if (state.isConnecting && state.connectionStart) {
+        const startNote = state.notes.find(note => note.id === state.connectionStart);
+        
+        if (startNote) {
+          const startX = startNote.position.x * state.zoom + state.canvasPosition.x;
+          const startY = startNote.position.y * state.zoom + state.canvasPosition.y;
+          
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', startX);
+          line.setAttribute('y1', startY);
+          line.setAttribute('x2', state.dragStart.x);
+          line.setAttribute('y2', state.dragStart.y);
+          line.setAttribute('stroke', '#666');
+          line.setAttribute('stroke-width', Math.max(1, 2 * state.zoom));
+          line.setAttribute('stroke-dasharray', '5,5');
+          
+          connectionsLayer.appendChild(line);
+        }
+      }
+    };
+    
+    // Select a note
+    const selectNote = (id) => {
+      state.selectedNote = id;
+      renderAllNotes();
+    };
+    
+    // Move a note
+    const moveNote = (id, dx, dy) => {
+      const note = state.notes.find(note => note.id === id);
+      if (note) {
+        note.position.x += dx / state.zoom;
+        note.position.y += dy / state.zoom;
+        
+        // Update just the position of this note without full re-render
+        const noteElement = document.getElementById(note.id);
+        if (noteElement) {
+          noteElement.style.left = `${note.position.x * state.zoom + state.canvasPosition.x}px`;
+          noteElement.style.top = `${note.position.y * state.zoom + state.canvasPosition.y}px`;
+        }
+        
+        // Update connections
+        renderConnections();
+      }
+    };
+    
+    // Update note text
+    const updateNoteText = (id, text) => {
+      const note = state.notes.find(note => note.id === id);
+      if (note) {
+        note.text = text;
+      }
+    };
+    
+    // Toggle editing mode
+    const toggleEditing = (id, isEditing) => {
+      const note = state.notes.find(note => note.id === id);
+      if (note) {
+        note.isEditing = isEditing;
+        renderNote(note);
+      }
+    };
+    
+    // Delete a note
+    const deleteNote = (id) => {
+      state.notes = state.notes.filter(note => note.id !== id);
+      state.connections = state.connections.filter(conn => conn.start !== id && conn.end !== id);
+      state.selectedNote = null;
+      
+      // Remove the note element
+      const noteElement = document.getElementById(id);
+      if (noteElement) {
+        noteElement.remove();
+      }
+      
+      // Update connections
+      renderConnections();
+    };
+    
+    // Start connection process
+    const startConnection = (id) => {
+      state.isConnecting = true;
+      state.connectionStart = id;
+      renderAllNotes();
+      
+      // Add connecting message
+      const existingMessage = document.getElementById('connecting-message');
+      if (existingMessage) {
+        existingMessage.remove();
+      }
+      
+      const message = document.createElement('div');
+      message.id = 'connecting-message';
+      message.style.position = 'absolute';
+      message.style.top = '20px';
+      message.style.left = '50%';
+      message.style.transform = 'translateX(-50%)';
+      message.style.background = 'rgba(0,0,0,0.7)';
+      message.style.color = 'white';
+      message.style.padding = '10px 20px';
+      message.style.borderRadius = '20px';
+      message.style.zIndex = '1000';
+      message.textContent = 'Select another note to connect or press Esc to cancel';
+      app.appendChild(message);
+    };
+    
+    // Complete connection
+    const completeConnection = (endId) => {
+      if (state.connectionStart && endId && state.connectionStart !== endId) {
+        // Check if connection already exists
+        const connectionExists = state.connections.some(
+          conn => (conn.start === state.connectionStart && conn.end === endId) || 
+                 (conn.start === endId && conn.end === state.connectionStart)
+        );
+        
+        if (!connectionExists) {
+          state.connections.push({ start: state.connectionStart, end: endId });
+        }
+      }
+      
+      state.isConnecting = false;
+      state.connectionStart = null;
+      
+      // Remove connecting message
+      const message = document.getElementById('connecting-message');
+      if (message) {
+        message.remove();
+      }
+      
+      renderAllNotes();
+    };
+    
+    // Canvas drag
+    const startDrag = (e) => {
+      if (e.target === app) {
+        state.isDragging = true;
+        state.dragStart = { x: e.clientX, y: e.clientY };
+      }
+    };
+    
+    const doDrag = (e) => {
+      if (state.isDragging) {
+        const dx = e.clientX - state.dragStart.x;
+        const dy = e.clientY - state.dragStart.y;
+        
+        state.canvasPosition.x += dx;
+        state.canvasPosition.y += dy;
+        state.dragStart = { x: e.clientX, y: e.clientY };
+        
+        renderAllNotes();
+      }
+    };
+    
+    const endDrag = () => {
+      state.isDragging = false;
+    };
+    
+    // Zoom in/out
+    const zoomIn = () => {
+      state.zoom = Math.min(state.zoom * 1.2, 3);
+      updateZoomInfo();
+      renderAllNotes();
+    };
+    
+    const zoomOut = () => {
+      state.zoom = Math.max(state.zoom / 1.2, 0.3);
+      updateZoomInfo();
+      renderAllNotes();
+    };
+    
+    // Handle mouse wheel for zoom
+    const handleWheel = (e) => {
+      e.preventDefault();
+      
+      // Get mouse position
+      const rect = app.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      // Convert to canvas coordinates
+      const canvasX = (mouseX - state.canvasPosition.x) / state.zoom;
+      const canvasY = (mouseY - state.canvasPosition.y) / state.zoom;
+      
+      // Apply zoom - invert deltaY to make scroll direction intuitive
+      const newZoom = e.deltaY < 0 
+        ? Math.min(state.zoom * 1.1, 3) 
+        : Math.max(state.zoom / 1.1, 0.3);
+      
+      // Adjust canvas position to zoom toward/from mouse position
+      state.canvasPosition.x = mouseX - canvasX * newZoom;
+      state.canvasPosition.y = mouseY - canvasY * newZoom;
+      
+      state.zoom = newZoom;
+      updateZoomInfo();
+      renderAllNotes();
+    };
+    
+    // Update zoom info display
+    const updateZoomInfo = () => {
+      zoomInfo.textContent = `${Math.round(state.zoom * 100)}%`;
+    };
+    
+    // Setup event listeners
+    addButton.addEventListener('click', addNote);
+    zoomInButton.addEventListener('click', zoomIn);
+    zoomOutButton.addEventListener('click', zoomOut);
+    
+    app.addEventListener('mousedown', startDrag);
+    app.addEventListener('mousemove', doDrag);
+    app.addEventListener('mouseup', endDrag);
+    app.addEventListener('mouseleave', endDrag);
+    app.addEventListener('wheel', handleWheel, { passive: false });
+    
+    // Handle escape key for canceling connections
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && state.isConnecting) {
+        state.isConnecting = false;
+        state.connectionStart = null;
+        
+        // Remove connecting message
+        const message = document.getElementById('connecting-message');
+        if (message) {
+          message.remove();
+        }
+        
+        renderAllNotes();
+      }
+    });
+    
+    // Add a default note to start with
+    addNote();
+  </script>
+</body>
+</html>
